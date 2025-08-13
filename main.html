@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PROmodoro — Pomodoro + Local Slideshow</title>
+  <style>
+    :root {
+      --bg: #0f1220;
+      --panel: #171a2b;
+      --muted: #9aa3b2;
+      --accent: #7c5cff;
+      --accent-2: #1ed760;
+      --danger: #ff5c7a;
+      --text: #eaf0ff;
+      --shadow: rgba(0,0,0,.3);
+      --select: rgba(124,92,255,.35);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text);
+      background: radial-gradient(1200px 800px at 20% -10%, rgba(124,92,255,.3), transparent),
+                  radial-gradient(800px 800px at 120% 20%, rgba(30,215,96,.15), transparent),
+                  var(--bg);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 16px;
+    }
+    header, footer { padding: 16px 20px; }
+    header { display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-weight: 800; letter-spacing: 0.5px; font-size: 20px; }
+    .brand em { color: var(--accent); font-style: normal; }
+
+    .container { padding: 0 20px 20px; display: grid; gap: 16px; grid-template-columns: 350px 1fr; align-items: start; }
+    @media (max-width: 960px) { .container { grid-template-columns: 1fr; } }
+
+    .card { background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)); border: 1px solid rgba(255,255,255,.06); border-radius: 16px; box-shadow: 0 10px 30px var(--shadow); overflow: hidden; }
+    .card h2 { margin: 0; font-size: 16px; letter-spacing: .3px; color: #dfe7ff; }
+    .card-header { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.06); display:flex; align-items:center; justify-content:space-between; gap: 10px; }
+    .card-body { padding: 16px; display: grid; gap: 12px; }
+
+    .timer-display { font-variant-numeric: tabular-nums; font-size: 48px; font-weight: 800; letter-spacing: 1px; }
+    .subtext { color: var(--muted); font-size: 13px; }
+
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    button, .btn { cursor: pointer; border: 0; border-radius: 12px; padding: 10px 14px; font-weight: 700; color: #0b0e19; background: #eaf0ff; transition: transform .04s ease, filter .2s ease, background .2s ease; }
+    button:hover { filter: brightness(1.05); }
+    button:active { transform: translateY(1px); }
+    .btn-accent { background: var(--accent); color: white; }
+    .btn-success { background: var(--accent-2); color: #00160a; }
+    .btn-ghost { background: rgba(255,255,255,.08); color: #eaf0ff; }
+    .btn-danger { background: var(--danger); color: #2b020a; }
+    .btn-small { padding: 8px 10px; font-size: 12px; border-radius: 10px; }
+    .btn-warning { background: #ffd166; color: #2a2000; }
+
+    input[type="number"], input[type="file"], input[type="text"] { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.04); color: var(--text); }
+    label { font-size: 12px; color: var(--muted); }
+
+    .slideshow { display: grid; grid-template-rows: minmax(280px, 62vh) auto; gap: 12px; }
+    .viewport { background: #0b0e19; border-radius: 16px; overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+    .viewport img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: #0b0e19; image-rendering: auto; display: block; }
+    .empty { color: var(--muted); font-size: 14px; }
+
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between; align-items: center; }
+    .controls .left, .controls .right { display: flex; gap: 8px; align-items: center; }
+
+    .gallery { display: none; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: 50vh; overflow: auto; border-top: 1px dashed rgba(255,255,255,.08); padding-top: 12px; }
+    .gallery.open { display: grid; }
+    .thumb { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,.06); }
+    .thumb img { width: 100%; height: 120px; object-fit: cover; display: block; }
+    .thumb .thumb-actions { position: absolute; inset: auto 6px 6px 6px; display: flex; gap: 6px; }
+    .thumb .remove { background: rgba(255,92,122,.9); color: white; }
+    .thumb .selectbox { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,.5); padding: 4px 6px; border-radius: 8px; font-size: 12px; }
+    .thumb.selected::after { content: ""; position: absolute; inset: 0; outline: 2px solid var(--accent); background: var(--select); }
+
+    footer { color: var(--muted); font-size: 12px; text-align: center; }
+    a { color: #cbd6ff; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">PRO<em>modoro</em> ⏱️📸</div>
+    <div class="row">
+      <button id="startBtn" class="btn-success">Start</button>
+      <button id="pauseBtn" class="btn-ghost">Pause</button>
+      <button id="resetBtn" class="btn-ghost">Reset</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Timer / Settings Panel -->
+    <section class="card" aria-label="Timer and Settings">
+      <div class="card-header">
+        <h2>Timer</h2>
+        <span class="subtext" id="cycleLabel">Cycle 1 of 4</span>
+      </div>
+      <div class="card-body">
+        <div>
+          <div class="timer-display" id="timeDisplay">25:00</div>
+          <div class="subtext" id="phaseLabel">Work Interval</div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label for="workMins">Work (minutes)</label>
+            <input id="workMins" type="number" min="1" max="180" value="25" />
+          </div>
+          <div style="flex:1">
+            <label for="breakMins">Break (minutes)</label>
+            <input id="breakMins" type="number" min="1" max="60" value="5" />
+          </div>
+          <div style="flex:1">
+            <label for="autoStart">Autostart next phase</label>
+            <button id="autoStart" class="btn btn-small btn-ghost" aria-pressed="true">On</button>
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label for="slideSeconds">Slideshow advance (seconds)</label>
+            <input id="slideSeconds" type="number" min="2" max="120" value="5" />
+          </div>
+          <div style="flex:1">
+            <label for="ding">Sound on phase change</label>
+            <button id="ding" class="btn btn-small btn-ghost" aria-pressed="true">On</button>
+          </div>
+          <div style="flex:1">
+            <label for="slideAuto">Slideshow auto‑play</label>
+            <button id="slideAuto" class="btn btn-small btn-ghost" aria-pressed="true">On</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slideshow Panel -->
+    <section class="card" aria-label="Slideshow">
+      <div class="card-header">
+        <h2>Slideshow</h2>
+        <div class="row">
+          <input id="filePicker" type="file" accept="image/*" multiple />
+          <button id="toggleGallery" class="btn-ghost">View All</button>
+        </div>
+      </div>
+      <div class="card-body slideshow">
+        <div class="viewport" id="viewport" aria-live="polite" aria-label="Image viewport">
+          <div class="empty" id="emptyState">Add images to start your slideshow ✨</div>
+          <img id="mainImage" alt="Slideshow image" hidden />
+        </div>
+        <div class="controls">
+          <div class="left">
+            <button id="prevBtn" class="btn">⟵ Prev</button>
+            <button id="nextBtn" class="btn">Next ⟶</button>
+          </div>
+          <div class="right">
+            <button id="removeSelected" class="btn-warning" disabled>Remove Selected</button>
+            <button id="removeAll" class="btn-danger">Remove All</button>
+            <button id="removeCurrent" class="btn-danger">Remove Current</button>
+          </div>
+        </div>
+        <div id="gallery" class="gallery" aria-label="All images (gallery)"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Built with ♥ for focused flow. Images stay local in your browser.
+  </footer>
+
+  <audio id="dingSound" preload="auto">
+    <source src="data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAAAACAAACbAAABmFtcDM" type="audio/mp3" />
+  </audio>
+
+  <script>
+    // ====== State ======
+    const state = {
+      images: [], // { id, url, name }
+      currentIndex: 0,
+      slideshowTimer: null,
+      pomodoro: {
+        workSeconds: 25 * 60,
+        breakSeconds: 5 * 60,
+        remaining: 25 * 60,
+        isWork: true,
+        isRunning: false,
+        cycle: 1, // 1..4
+        maxCycles: 4,
+        tickHandle: null,
+        autoStart: true,
+        ding: true,
+      },
+      autoPlay: true, // slideshow auto-play toggle
+      selected: new Set(), // selected image ids for batch ops
+    };
+
+    // ====== Persistence (IndexedDB) ======
+    const DB_NAME = 'promodoro-db';
+    const DB_VERSION = 1;
+    const STORE = 'images';
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        if (!('indexedDB' in window)) { console.warn('IndexedDB not available: images will not persist.'); resolve(null); return; }
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbGetAll(db) {
+      if (!db) return [];
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const store = tx.objectStore(STORE);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbAdd(db, record) {
+      if (!db) return null;
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        const store = tx.objectStore(STORE);
+        const req = store.add(record);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbDelete(db, id) {
+      if (!db) return;
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        const store = tx.objectStore(STORE);
+        const req = store.delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbClear(db) {
+      if (!db) return;
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        const store = tx.objectStore(STORE);
+        const req = store.clear();
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    let dbHandle = null;
+
+    async function loadImagesFromDB() {
+      dbHandle = await openDB();
+      const records = await dbGetAll(dbHandle);
+      state.images = records.map(r => ({ id: r.id, name: r.name, url: URL.createObjectURL(r.blob) }));
+      state.selected.clear();
+      rebuildGallery();
+      if (state.images.length > 0) showImageAt(0);
+      updateBatchButtons();
+    }
+
+    async function addFilesToDB(files) {
+      for (const f of files) {
+        const blob = f.slice(0, f.size, f.type);
+        const id = await dbAdd(dbHandle, { name: f.name, type: f.type, blob });
+        const url = URL.createObjectURL(blob);
+        state.images.push({ id, url, name: f.name });
+      }
+      state.selected.clear();
+      rebuildGallery();
+      if (state.images.length > 0) {
+        const lastIndex = state.images.length - 1;
+        showImageAt(lastIndex);
+        if (state.pomodoro.isRunning && state.autoPlay) startSlideshow();
+      }
+      updateBatchButtons();
+    }
+
+    async function deleteImageFromDB(id) { await dbDelete(dbHandle, id); }
+
+    // ====== DOM ======
+    const timeDisplay = document.getElementById('timeDisplay');
+    const phaseLabel = document.getElementById('phaseLabel');
+    const cycleLabel = document.getElementById('cycleLabel');
+
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    const workMins = document.getElementById('workMins');
+    const breakMins = document.getElementById('breakMins');
+    const autoStartBtn = document.getElementById('autoStart');
+    const slideSeconds = document.getElementById('slideSeconds');
+    const dingBtn = document.getElementById('ding');
+    const dingSound = document.getElementById('dingSound');
+
+    const filePicker = document.getElementById('filePicker');
+    const toggleGallery = document.getElementById('toggleGallery');
+    const gallery = document.getElementById('gallery');
+
+    const mainImage = document.getElementById('mainImage');
+    const emptyState = document.getElementById('emptyState');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const removeCurrentBtn = document.getElementById('removeCurrent');
+    const removeAllBtn = document.getElementById('removeAll');
+    const removeSelectedBtn = document.getElementById('removeSelected');
+    const slideAutoBtn = document.getElementById('slideAuto');
+
+    // ====== Helpers ======
+    function formatTime(s) { const m = Math.floor(s / 60).toString().padStart(2, '0'); const sec = Math.floor(s % 60).toString().padStart(2, '0'); return `${m}:${sec}`; }
+    function setPhaseLabels() { phaseLabel.textContent = state.pomodoro.isWork ? 'Work Interval' : 'Break Interval'; cycleLabel.textContent = `Cycle ${state.pomodoro.cycle} of ${state.pomodoro.maxCycles}`; }
+    function renderTime() { timeDisplay.textContent = formatTime(state.pomodoro.remaining); }
+
+    function updateDurations() {
+      const w = Math.max(1, Number(workMins.value || 25));
+      const b = Math.max(1, Number(breakMins.value || 5));
+      state.pomodoro.workSeconds = w * 60;
+      state.pomodoro.breakSeconds = b * 60;
+      if (!state.pomodoro.isRunning) {
+        state.pomodoro.remaining = state.pomodoro.isWork ? state.pomodoro.workSeconds : state.pomodoro.breakSeconds;
+        renderTime();
+      }
+    }
+
+    function startSlideshow() {
+      stopSlideshow();
+      if (!state.autoPlay || state.images.length === 0) return;
+      const intervalMs = Math.max(2, Number(slideSeconds.value || 5)) * 1000;
+      state.slideshowTimer = setInterval(() => { showNext(); }, intervalMs);
+    }
+
+    function stopSlideshow() { if (state.slideshowTimer) { clearInterval(state.slideshowTimer); state.slideshowTimer = null; } }
+
+    function showImageAt(index) {
+      if (state.images.length === 0) { mainImage.hidden = true; emptyState.hidden = false; return; }
+      state.currentIndex = ((index % state.images.length) + state.images.length) % state.images.length;
+      const item = state.images[state.currentIndex];
+      mainImage.src = item.url;
+      mainImage.alt = item.name || `Image ${state.currentIndex + 1}`;
+      emptyState.hidden = true; mainImage.hidden = false;
+      // Highlight in gallery
+      [...gallery.children].forEach((node, i) => { node.style.outline = i === state.currentIndex ? '2px solid var(--accent)' : 'none'; });
+    }
+
+    const showNext = () => showImageAt(state.currentIndex + 1);
+    const showPrev = () => showImageAt(state.currentIndex - 1);
+
+    function rebuildGallery() {
+      gallery.innerHTML = '';
+      state.images.forEach((item, idx) => {
+        const div = document.createElement('div');
+        div.className = 'thumb';
+
+        const img = document.createElement('img');
+        img.src = item.url; img.alt = item.name || `Image ${idx+1}`;
+        img.addEventListener('click', () => { showImageAt(idx); document.getElementById('toggleGallery').focus(); });
+
+        // selection toggle overlay
+        const select = document.createElement('button');
+        select.className = 'selectbox btn btn-small btn-ghost';
+        select.textContent = state.selected.has(item.id) ? 'Selected' : 'Select';
+        if (state.selected.has(item.id)) div.classList.add('selected');
+        select.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (state.selected.has(item.id)) { state.selected.delete(item.id); div.classList.remove('selected'); select.textContent = 'Select'; }
+          else { state.selected.add(item.id); div.classList.add('selected'); select.textContent = 'Selected'; }
+          updateBatchButtons();
+        });
+
+        const actions = document.createElement('div'); actions.className = 'thumb-actions';
+        const removeBtn = document.createElement('button'); removeBtn.className = 'btn btn-small remove'; removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', async (e) => { e.stopPropagation(); const rec = state.images[idx]; await deleteImageFromDB(rec.id); removeAt(idx); });
+        actions.appendChild(removeBtn);
+
+        div.appendChild(img);
+        div.appendChild(select);
+        div.appendChild(actions);
+        gallery.appendChild(div);
+      });
+    }
+
+    function updateBatchButtons() {
+      removeSelectedBtn.disabled = state.selected.size === 0;
+      removeAllBtn.disabled = state.images.length === 0;
+    }
+
+    function removeAt(index) {
+      const [removed] = state.images.splice(index, 1);
+      if (removed) URL.revokeObjectURL(removed.url);
+      if (state.currentIndex >= state.images.length) state.currentIndex = 0;
+      // Also unselect if it was selected
+      if (removed && state.selected.has(removed.id)) state.selected.delete(removed.id);
+      rebuildGallery();
+      if (state.images.length === 0) { stopSlideshow(); }
+      showImageAt(state.currentIndex);
+      updateBatchButtons();
+    }
+
+    async function removeSelected() {
+      if (state.selected.size === 0) return;
+      const toDelete = new Set(state.selected);
+      state.selected.clear();
+      // Delete from DB first
+      await Promise.all([...toDelete].map(id => dbDelete(dbHandle, id)));
+      // Remove from state
+      state.images = state.images.filter(img => {
+        if (toDelete.has(img.id)) { URL.revokeObjectURL(img.url); return false; }
+        return true;
+      });
+      rebuildGallery();
+      if (state.images.length === 0) stopSlideshow();
+      if (state.currentIndex >= state.images.length) state.currentIndex = 0;
+      showImageAt(state.currentIndex);
+      updateBatchButtons();
+    }
+
+    async function removeAll() {
+      if (state.images.length === 0) return;
+      await dbClear(dbHandle);
+      // Revoke all URLs
+      for (const img of state.images) URL.revokeObjectURL(img.url);
+      state.images = [];
+      state.selected.clear();
+      rebuildGallery();
+      stopSlideshow();
+      showImageAt(0);
+      updateBatchButtons();
+    }
+
+    // ====== Pomodoro Engine ======
+    function startTimer() {
+      if (state.pomodoro.isRunning) return;
+      state.pomodoro.isRunning = true;
+      if (!state.pomodoro.remaining || state.pomodoro.remaining < 0) { state.pomodoro.remaining = state.pomodoro.isWork ? state.pomodoro.workSeconds : state.pomodoro.breakSeconds; }
+      if (state.images.length > 0 && state.autoPlay) startSlideshow();
+      state.pomodoro.tickHandle = setInterval(tick, 1000);
+      startBtn.disabled = true; pauseBtn.disabled = false;
+    }
+
+    function pauseTimer() {
+      if (!state.pomodoro.isRunning) return;
+      state.pomodoro.isRunning = false;
+      clearInterval(state.pomodoro.tickHandle); state.pomodoro.tickHandle = null;
+      stopSlideshow(); startBtn.disabled = false; pauseBtn.disabled = true;
+    }
+
+    function resetTimer() { pauseTimer(); state.pomodoro.isWork = true; state.pomodoro.cycle = 1; state.pomodoro.remaining = state.pomodoro.workSeconds; setPhaseLabels(); renderTime(); }
+
+    function tick() { if (!state.pomodoro.isRunning) return; state.pomodoro.remaining -= 1; renderTime(); if (state.pomodoro.remaining <= 0) { phaseComplete(); } }
+
+    function phaseComplete() {
+      if (state.pomodoro.ding) { try { dingSound.currentTime = 0; dingSound.play(); } catch (_) {} }
+      if (state.pomodoro.isWork) {
+        if (state.pomodoro.cycle >= state.pomodoro.maxCycles) { pauseTimer(); state.pomodoro.remaining = 0; renderTime(); phaseLabel.textContent = 'Completed ✅'; stopSlideshow(); return; }
+        else { state.pomodoro.isWork = false; state.pomodoro.remaining = state.pomodoro.breakSeconds; setPhaseLabels(); renderTime(); if (!state.pomodoro.autoStart) pauseTimer(); }
+      } else { state.pomodoro.isWork = true; state.pomodoro.cycle += 1; state.pomodoro.remaining = state.pomodoro.workSeconds; setPhaseLabels(); renderTime(); if (!state.pomodoro.autoStart) pauseTimer(); }
+      if (state.pomodoro.isRunning && state.images.length > 0 && state.autoPlay) startSlideshow();
+    }
+
+    // ====== Event Listeners ======
+    startBtn.addEventListener('click', startTimer);
+    pauseBtn.addEventListener('click', pauseTimer);
+    resetBtn.addEventListener('click', resetTimer);
+
+    workMins.addEventListener('change', updateDurations);
+    breakMins.addEventListener('change', updateDurations);
+    slideSeconds.addEventListener('change', () => { if (state.pomodoro.isRunning && state.autoPlay) startSlideshow(); });
+
+    autoStartBtn.addEventListener('click', () => { state.pomodoro.autoStart = !state.pomodoro.autoStart; autoStartBtn.textContent = state.pomodoro.autoStart ? 'On' : 'Off'; autoStartBtn.setAttribute('aria-pressed', String(state.pomodoro.autoStart)); });
+
+    dingBtn.addEventListener('click', () => { state.pomodoro.ding = !state.pomodoro.ding; dingBtn.textContent = state.pomodoro.ding ? 'On' : 'Off'; dingBtn.setAttribute('aria-pressed', String(state.pomodoro.ding)); });
+
+    slideAutoBtn.addEventListener('click', () => { state.autoPlay = !state.autoPlay; slideAutoBtn.textContent = state.autoPlay ? 'On' : 'Off'; slideAutoBtn.setAttribute('aria-pressed', String(state.autoPlay)); if (state.pomodoro.isRunning) { if (state.autoPlay) startSlideshow(); else stopSlideshow(); } });
+
+    prevBtn.addEventListener('click', showPrev);
+    nextBtn.addEventListener('click', showNext);
+
+    removeCurrentBtn.addEventListener('click', async () => { if (state.images.length === 0) return; const rec = state.images[state.currentIndex]; await deleteImageFromDB(rec.id); removeAt(state.currentIndex); });
+    removeSelectedBtn.addEventListener('click', removeSelected);
+    removeAllBtn.addEventListener('click', removeAll);
+
+    toggleGallery.addEventListener('click', () => { gallery.classList.toggle('open'); toggleGallery.textContent = gallery.classList.contains('open') ? 'Hide All' : 'View All'; });
+
+    filePicker.addEventListener('change', async (e) => { const files = [...e.target.files].filter(f => f.type.startsWith('image/')); await addFilesToDB(files); if (state.pomodoro.isRunning && state.autoPlay) startSlideshow(); e.target.value = ''; });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.key === ' ') { e.preventDefault(); state.pomodoro.isRunning ? pauseTimer() : startTimer(); }
+      if (e.key === 'ArrowRight') showNext();
+      if (e.key === 'ArrowLeft') showPrev();
+      if (e.key.toLowerCase() === 'g') toggleGallery.click();
+      if (e.key.toLowerCase() === 'a' && gallery.classList.contains('open')) {
+        // quick select/unselect current image in gallery when open
+        const current = state.images[state.currentIndex];
+        if (!current) return;
+        if (state.selected.has(current.id)) state.selected.delete(current.id); else state.selected.add(current.id);
+        rebuildGallery();
+        updateBatchButtons();
+      }
+    });
+
+    // Initial render & DB boot
+    setPhaseLabels(); renderTime(); loadImagesFromDB();
+  </script>
+</body>
+</html>
